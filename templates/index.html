@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Resume</title>
+    <style>
+        body {
+            background-color: #e6f7ff; /* light blue background */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .card {
+            background-color: #ffffff; /* white card */
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0, 128, 128, 0.2); /* soft green shadow */
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .card h2 {
+            color: #007acc; /* blue heading */
+            margin-bottom: 30px;
+        }
+
+        .card input[type="file"] {
+            margin-bottom: 20px;
+            padding: 10px;
+            width: 100%;
+            border: 2px solid #00cc99; /* green border */
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+
+        .card button {
+            background-color: #00cc99; /* green button */
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .card button:hover {
+            background-color: #009977; /* darker green on hover */
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Upload Resume to Generate Quiz</h2>
+        <form action="/" method="post" enctype="multipart/form-data">
+            <input type="file" name="resume" accept=".pdf,.txt" required>
+            <button type="submit">Start Quiz</button>
+        </form>
+    </div>
+</body>
+</html>

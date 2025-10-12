@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quiz</title>
+    <style>
+        body {
+            background-color: #e6f7ff; /* light blue background */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        form {
+            background-color: #ffffff; /* white background for the quiz card */
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0, 128, 128, 0.2);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h2 {
+            text-align: center;
+            color: #007acc; /* blue heading */
+            margin-bottom: 30px;
+        }
+
+        div {
+            margin-bottom: 25px;
+        }
+
+        p {
+            font-weight: bold;
+            color: #004d66;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #003d4d;
+        }
+
+        input[type="radio"] {
+            margin-right: 10px;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #cceeff;
+            margin: 20px 0;
+        }
+
+        button {
+            display: block;
+            margin: 0 auto;
+            background-color: #00cc99; /* green button */
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #009977;
+        }
+    </style>
+</head>
+<body>
+    <form method="POST">
+        <h2>Answer the Quiz</h2>
+        {% for q in questions %}
+            {% set i = loop.index0 %}
+            <div>
+                <p><strong>Q{{ i+1 }}: {{ q.question }}</strong></p>
+                {% for option in q.options %}
+                    {% set j = loop.index0 %}
+                    <label>
+                        <input type="radio" name="q{{ i }}" value="{{ ['A','B','C','D'][j] }}" required>
+                        {{ ['A','B','C','D'][j] }}) {{ option }}
+                    </label>
+                {% endfor %}
+            </div>
+            <hr>
+        {% endfor %}
+        <button type="submit">Submit Quiz</button>
+    </form>
+</body>
+</html>
