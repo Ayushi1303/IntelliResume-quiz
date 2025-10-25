@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Learning Resources</title>
+    <style>
+        body {
+            background-color: #e6f7ff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
+        }
+        h2 {
+            color: #007acc;
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .note {
+            color: #004d66;
+            margin-bottom: 20px;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            padding: 22px;
+            margin-bottom: 16px;
+            border-radius: 14px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 12px 28px rgba(0, 128, 128, 0.18);
+        }
+        .card h3 {
+            margin: 0 0 8px 0;
+            color: #003d4d;
+            font-weight: 700;
+        }
+        .card p {
+            margin: 6px 0 12px 0;
+            color: #004d66;
+        }
+        .links a {
+            display: inline-block;
+            margin-right: 12px;
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            background-color: #00cc99;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 10px;
+            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
+            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
+        }
+        .links a:hover {
+            background-color: #009977;
+            transform: translateY(-1px);
+        }
+        .actions {
+            margin-top: 20px;
+        }
+        .actions a {
+            display: inline-block;
+            margin-right: 10px;
+            padding: 10px 16px;
+            background-color: #00cc99;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 10px;
+            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
+            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
+        }
+        .actions a:hover {
+            background-color: #009977;
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <h2>Learning Resources for Weak Topics</h2>
+    <p class="note">These suggestions are based on your latest quiz performance.</p>
+
+    {% for w in weak %}
+        <div class="card">
+            <h3>{{ w.skill }}</h3>
+            <p>Estimated Accuracy: <strong>{{ w.accuracy }}%</strong></p>
+            <div class="links">
+                {% for r in w.resources %}
+                    <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.title }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    {% endfor %}
+
+    <div class="actions">
+        <a href="{{ url_for('recommendations') }}">Company Recommendations</a>
+        <a href="{{ url_for('quiz') }}">Back to Quiz</a>
+        <a href="{{ url_for('index') }}">Upload New Resume</a>
+    </div>
+</body>
+</html>

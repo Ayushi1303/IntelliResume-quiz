@@ -11,11 +11,14 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
         }
 
         h2, h3 {
             color: #007acc; /* blue */
             text-align: center;
+            font-weight: 700;
+            letter-spacing: 0.3px;
         }
 
         p strong {
@@ -34,28 +37,31 @@
 
         .question-box {
             background-color: #ffffff;
-            border: 2px solid #cceeff;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 800px;
-            box-shadow: 0 4px 10px rgba(0, 128, 128, 0.1);
+            border: 1px solid rgba(0,0,0,0.06);
+            padding: 22px;
+            margin-bottom : 20px;
+            border-radius: 14px;
+            width : 90%;
+            max-width : 800px;
+            box-shadow: 0 12px 28px rgba(0, 128, 128, 0.18);
         }
 
         a {
             display: inline-block;
-            margin-top: 20px;
+            margin-top : 20px;
+            margin-right: 10px;
             padding: 10px 20px;
             background-color: #00cc99; /* green */
             color: white;
             text-decoration: none;
-            border-radius: 8px;
-            transition: background-color 0.3s ease;
+            border-radius: 10px;
+            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
+            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
         }
 
         a:hover {
             background-color: #009977;
+            transform: translateY(-1px);
         }
     </style>
 </head>
@@ -83,5 +89,6 @@
     {% endfor %}
 
     <a href="{{ url_for('quiz') }}">Try Again</a>
+    <a href="{{ url_for('resources') }}">Learning Resources</a>
 </body>
 </html>

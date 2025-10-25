@@ -10,45 +10,49 @@
             padding: 40px 20px;
             display: flex;
             justify-content: center;
+            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
         }
 
         form {
             background-color: #ffffff; /* white background for the quiz card */
             padding: 30px;
             border-radius: 16px;
-            box-shadow: 0 8px 20px rgba(0, 128, 128, 0.2);
-            max-width: 800px;
-            width: 100%;
+            box-shadow: 0 12px 28px rgba(0, 128, 128, 0.18);
+            max-width : 800px;
+            width : 100%;
+            border: 1px solid rgba(0,0,0,0.06);
         }
 
         h2 {
             text-align: center;
             color: #007acc; /* blue heading */
-            margin-bottom: 30px;
+            margin-bottom : 20px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
         }
 
         div {
-            margin-bottom: 25px;
+            margin-bottom : 25px;
         }
 
         p {
-            font-weight: bold;
-            color: #004d66;
+            font-weight: 600;
+            color: #003d4d;
         }
 
         label {
             display: block;
-            margin-bottom: 8px;
+            margin-bottom : 8px;
             color: #003d4d;
         }
 
         input[type="radio"] {
-            margin-right: 10px;
+            margin-right : 10px;
         }
 
         hr {
             border: none;
-            border-top: 1px solid #cceeff;
+            border-top : 1px solid #cceeff;
             margin: 20px 0;
         }
 
@@ -62,12 +66,15 @@
             font-size: 16px;
             border-radius: 8px;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
+            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
         }
 
         button:hover {
             background-color: #009977;
+            transform: translateY(-1px);
         }
+        button:active { transform: translateY(0); }
     </style>
 </head>
 <body>
@@ -76,7 +83,7 @@
         {% for q in questions %}
             {% set i = loop.index0 %}
             <div>
-                <p><strong>Q{{ i+1 }}: {{ q.question }}</strong></p>
+                <p><strong>Q{{ i+1 }} (Skill: {{ q.skill }}): {{ q.question }}</strong></p>
                 {% for option in q.options %}
                     {% set j = loop.index0 %}
                     <label>

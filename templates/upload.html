@@ -1,11 +1,82 @@
 <!DOCTYPE html>
 <html>
-<head><title>Upload Resume</title></head>
+<head>
+    <title>Resume Details</title>
+    <style>
+        body {
+            background-color: #e6f7ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height : 100vh;
+            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
+        }
+        .card {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0, 128, 128, 0.2);
+            text-align: center;
+            width : 90%;
+            max-width : 400px;
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(0,0,0,0.06);
+        }
+        .card h2 {
+            color: #007acc;
+            margin-bottom : 16px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .card ul {
+            list-style: none;
+            padding: 0;
+            margin-bottom : 20px;
+        }
+        .card li {
+            background: #f9f9f9;
+            margin: 8px 0;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #cceeff;
+            color: #004d66;
+            transition: transform 0.1s ease;
+        }
+        .card li:hover { transform: translateX(2px); }
+        .card button {
+            background-color: #00cc99;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
+            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
+        }
+        .card button:hover {
+            background-color: #009977;
+            transform: translateY(-1px);
+        }
+        .card button:active { transform: translateY(0); }
+    </style>
+</head>
 <body>
-  <h2>Upload Your Resume</h2>
-  <form method="POST" enctype="multipart/form-data">
-    <input type="file" name="resume" required>
-    <button type="submit">Submit</button>
-  </form>
+    <div class="card">
+        <h2>Resume Uploaded!</h2>
+        <p><strong>Name:</strong> {{ name }}</p>
+        <p><strong>Extracted Skills:</strong></p>
+        <ul>
+            {% for skill in skills %}
+                <li>{{ skill }}</li>
+            {% endfor %}
+        </ul>
+        <form action="/quiz" method="get">
+            <button type="submit">Start Quiz</button>
+        </form>
+    </div>
 </body>
 </html>
