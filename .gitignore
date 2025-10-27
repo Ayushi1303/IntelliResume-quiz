@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+
+# OS
+.DS_Store
+
+# Debug logs
+mistral_debug.json
+
+# Uploads and temp
+uploads/
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node/Frontend (if any)
+node_modules/
+
+# Local configs
+*.local

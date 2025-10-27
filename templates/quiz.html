@@ -1,100 +1,46 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Quiz</title>
-    <style>
-        body {
-            background-color: #e6f7ff; /* light blue background */
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 40px 20px;
-            display: flex;
-            justify-content: center;
-            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
-        }
-
-        form {
-            background-color: #ffffff; /* white background for the quiz card */
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 12px 28px rgba(0, 128, 128, 0.18);
-            max-width : 800px;
-            width : 100%;
-            border: 1px solid rgba(0,0,0,0.06);
-        }
-
-        h2 {
-            text-align: center;
-            color: #007acc; /* blue heading */
-            margin-bottom : 20px;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-        }
-
-        div {
-            margin-bottom : 25px;
-        }
-
-        p {
-            font-weight: 600;
-            color: #003d4d;
-        }
-
-        label {
-            display: block;
-            margin-bottom : 8px;
-            color: #003d4d;
-        }
-
-        input[type="radio"] {
-            margin-right : 10px;
-        }
-
-        hr {
-            border: none;
-            border-top : 1px solid #cceeff;
-            margin: 20px 0;
-        }
-
-        button {
-            display: block;
-            margin: 0 auto;
-            background-color: #00cc99; /* green button */
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            font-size: 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
-            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
-        }
-
-        button:hover {
-            background-color: #009977;
-            transform: translateY(-1px);
-        }
-        button:active { transform: translateY(0); }
-    </style>
-</head>
-<body>
-    <form method="POST">
-        <h2>Answer the Quiz</h2>
-        {% for q in questions %}
-            {% set i = loop.index0 %}
-            <div>
-                <p><strong>Q{{ i+1 }} (Skill: {{ q.skill }}): {{ q.question }}</strong></p>
-                {% for option in q.options %}
-                    {% set j = loop.index0 %}
-                    <label>
-                        <input type="radio" name="q{{ i }}" value="{{ ['A','B','C','D'][j] }}" required>
-                        {{ ['A','B','C','D'][j] }}) {{ option }}
-                    </label>
-                {% endfor %}
-            </div>
-            <hr>
-        {% endfor %}
-        <button type="submit">Submit Quiz</button>
+{% extends "base.html" %}
+{% block title %}IntelliResume — Quiz{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Answer the Quiz</h2>
+  </div>
+  <div class="card-body">
+    {% if quiz_id %}
+    <p class="meta" style="margin-top:-6px; margin-bottom:12px;">Quiz ID: <code>{{ quiz_id[-8:] if quiz_id|length > 8 else quiz_id }}</code></p>
+    {% endif %}
+    <form id="quizForm" method="POST">
+      {% for q in questions %}
+        {% set i = loop.index0 %}
+        <div class="q">
+          <p>Q{{ i+1 }} <span class="meta">(Skill: {{ q.skill }})</span></p>
+          <p>{{ q.question }}</p>
+          {% for option in q.options %}
+            {% set j = loop.index0 %}
+            <label>
+              <input type="radio" name="q{{ i }}" value="{{ ['A','B','C','D'][j] }}" required>
+              {{ ['A','B','C','D'][j] }}) {{ option }}
+            </label>
+          {% endfor %}
+        </div>
+        <div class="divider"></div>
+      {% endfor %}
+      <div class="actions">
+        <button id="submitBtn" class="btn" type="submit">Submit Quiz</button>
+      </div>
     </form>
-</body>
-</html>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.getElementById('quizForm');
+  const submitBtn = document.getElementById('submitBtn');
+  if(form && submitBtn){
+    form.addEventListener('submit', function(){
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+    });
+  }
+});
+</script>
+{% endblock %}

@@ -26,6 +26,7 @@ def extract_skills(text):
 
 def extract_name(text):
     # Normalize
+    print(f'text is {text}')
     text = re.sub(r"[\t\r]+", " ", text)
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 

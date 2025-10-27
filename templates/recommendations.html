@@ -1,113 +1,37 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Company Recommendations</title>
-    <style>
-        body {
-            background-color: #e6f7ff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 30px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
-        }
-        h2 {
-            color: #007acc;
-            margin-bottom: 10px;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-        }
-        .note {
-            color: #004d66;
-            margin-bottom: 20px;
-        }
-        .card {
-            background-color: #ffffff;
-            border: 1px solid rgba(0,0,0,0.06);
-            padding: 22px;
-            margin-bottom: 16px;
-            border-radius: 14px;
-            width: 90%;
-            max-width: 900px;
-            box-shadow: 0 12px 28px rgba(0, 128, 128, 0.18);
-        }
-        .row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-        .tile {
-            flex: 1 1 260px;
-            background: #f9fafa;
-            border: 1px solid #e6f3ff;
-            border-radius: 12px;
-            padding: 14px 16px;
-        }
-        .tile h4 {
-            margin: 0 0 6px 0;
-            color: #003d4d;
-        }
-        .tile p {
-            margin: 0 0 10px 0;
-            color: #00667a;
-            font-size: 14px;
-        }
-        .tile a {
-            display: inline-block;
-            padding: 8px 12px;
-            background-color: #00cc99;
-            color: #fff;
-            text-decoration: none;
-            border-radius: 10px;
-            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
-            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
-        }
-        .tile a:hover {
-            background-color: #009977;
-            transform: translateY(-1px);
-        }
-        .actions {
-            margin-top: 20px;
-        }
-        .actions a {
-            display: inline-block;
-            margin-right: 10px;
-            padding: 10px 16px;
-            background-color: #00cc99;
-            color: #fff;
-            text-decoration: none;
-            border-radius: 10px;
-            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
-            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
-        }
-        .actions a:hover {
-            background-color: #009977;
-            transform: translateY(-1px);
-        }
-    </style>
-</head>
-<body>
-    <h2>Company Recommendations</h2>
-    <p class="note">Based on your extracted skills, here are some companies and roles to explore.</p>
-
-    <div class="card">
-        <div class="row">
-            {% for r in recs %}
-                <div class="tile">
-                    <h4>{{ r.company }}</h4>
-                    <p>Role: <strong>{{ r.role }}</strong></p>
-                    <p>Matched Skill: <em>{{ r.skill }}</em></p>
-                    <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">View Openings</a>
+{% extends "base.html" %}
+{% block title %}IntelliResume — Company Recommendations{% endblock %}
+{% block content %}
+  <div class="card">
+    <div class="card-header">
+      <h2>Company Recommendations</h2>
+    </div>
+    <div class="card-body">
+      <p class="meta">Roles matched to your skills. Explore openings by company.</p>
+      <div class="grid" style="grid-template-columns: 1fr; gap: 16px;">
+        {% for c in companies %}
+          <div class="side">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+              <h3 style="margin:0">{{ c.company }}</h3>
+              <span class="chip">{{ c.roles|length }} openings</span>
+            </div>
+            <div class="divider"></div>
+            <div class="grid" style="grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px;">
+              {% for r in c.roles %}
+                <div class="side" style="padding:14px;">
+                  <h4 style="margin:0 0 6px 0;">{{ r.role }}</h4>
+                  <p class="meta" style="margin:0 0 10px 0;">Matched Skill: <em>{{ r.skill }}</em></p>
+                  <a class="btn" href="{{ r.url }}" target="_blank" rel="noopener noreferrer">View Opening</a>
                 </div>
-            {% endfor %}
-        </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="divider"></div>
+      <div class="actions" style="justify-content:flex-start;">
+        <a class="btn secondary" href="{{ url_for('resources') }}">Back to Resources</a>
+        <a class="btn secondary" href="{{ url_for('index') }}">Upload New Resume</a>
+      </div>
     </div>
-
-    <div class="actions">
-        <a href="{{ url_for('resources') }}">Back to Resources</a>
-        <a href="{{ url_for('index') }}">Upload New Resume</a>
-    </div>
-</body>
-</html>
+  </div>
+{% endblock %}

@@ -1,94 +1,38 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Quiz Result</title>
-    <style>
-        body {
-            background-color: #e6f7ff; /* light blue background */
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 30px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background-image: radial-gradient( circle at 20% 20%, rgba(0,204,153,0.15), transparent 40% ), radial-gradient( circle at 80% 0%, rgba(0,122,204,0.15), transparent 40% );
-        }
-
-        h2, h3 {
-            color: #007acc; /* blue */
-            text-align: center;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-        }
-
-        p strong {
-            color: #004d66;
-        }
-
-        .correct {
-            color: #00cc66; /* green */
-            font-weight: bold;
-        }
-
-        .wrong {
-            color: #cc0000; /* red */
-            font-weight: bold;
-        }
-
-        .question-box {
-            background-color: #ffffff;
-            border: 1px solid rgba(0,0,0,0.06);
-            padding: 22px;
-            margin-bottom : 20px;
-            border-radius: 14px;
-            width : 90%;
-            max-width : 800px;
-            box-shadow: 0 12px 28px rgba(0, 128, 128, 0.18);
-        }
-
-        a {
-            display: inline-block;
-            margin-top : 20px;
-            margin-right: 10px;
-            padding: 10px 20px;
-            background-color: #00cc99; /* green */
-            color: white;
-            text-decoration: none;
-            border-radius: 10px;
-            transition: background-color 0.2s ease, transform 0.05s ease, box-shadow 0.2s ease;
-            box-shadow: 0 6px 16px rgba(0, 204, 153, 0.25);
-        }
-
-        a:hover {
-            background-color: #009977;
-            transform: translateY(-1px);
-        }
-    </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}IntelliResume — Results{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
     <h2>Quiz Results</h2>
-    <p><strong>Your Score:</strong> {{ score }} / {{ total }}</p>
-
-    <h3>Detailed Feedback:</h3>
+  </div>
+  <div class="card-body">
+    <div class="summary">
+      <div><strong>Your Score:</strong> {{ score }} / {{ total }}</div>
+      <div class="badge">{{ (score / (total or 1) * 100) | round(1) }}%</div>
+    </div>
+    <div class="meta" style="margin-top:16px; font-weight:600;">Detailed Feedback</div>
     {% for res in results %}
-        <div class="question-box">
-            <p><strong>Q{{ loop.index }} (Skill: {{ res.skill }}): {{ res.question }}</strong></p>
-            <p>
-                Your Answer:
-                {% if res.is_correct %}
-                    <span class="correct">✅ {{ res.user_answer }}</span>
-                {% else %}
-                    <span class="wrong">❌ {{ res.user_answer }}</span><br>
-                    <strong>Correct Answer:</strong> <span class="correct">{{ res.correct_answer }}</span><br>
-                    {% if res.explanation %}
-                        <strong>Explanation:</strong> {{ res.explanation }}
-                    {% endif %}
-                {% endif %}
-            </p>
-        </div>
+      <div class="question">
+        <h4>Q{{ loop.index }} <span class="meta">(Skill: {{ res.skill }})</span></h4>
+        <p style="margin:0 0 6px 0">{{ res.question }}</p>
+        <p style="margin:0">
+          Your Answer:
+          {% if res.is_correct %}
+            <span class="correct">✅ {{ res.user_answer }}</span>
+          {% else %}
+            <span class="wrong">❌ {{ res.user_answer }}</span>
+            <br><strong>Correct Answer:</strong> <span class="correct">{{ res.correct_answer }}</span>
+            {% if res.explanation %}
+              <br><strong>Explanation:</strong> {{ res.explanation }}
+            {% endif %}
+          {% endif %}
+        </p>
+      </div>
     {% endfor %}
-
-    <a href="{{ url_for('quiz') }}">Try Again</a>
-    <a href="{{ url_for('resources') }}">Learning Resources</a>
-</body>
-</html>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('quiz') }}">Try Again</a>
+      <a class="btn secondary" href="{{ url_for('resources') }}">Learning Resources</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

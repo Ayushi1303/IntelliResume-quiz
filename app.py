@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
-import os, requests, fitz, spacy, json, traceback, uuid, re
+import os, requests, fitz, spacy, json, traceback, uuid, re, time, random
 # Optional OCR deps
 try:
     from pdf2image import convert_from_path
@@ -18,7 +18,55 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 nlp = spacy.load("en_core_web_sm")
 
-MISTRAL_API_KEY = "I14m9nTrNhTAiGPaHvLdaqRHrNKDkWDE"
+# Load lexicon of names (e.g., Indian names) from names.txt
+NAMES_LEXICON = set()
+try:
+    names_path = os.path.join(os.path.dirname(__file__), "names.txt")
+    with open(names_path, "r", encoding="utf-8") as f:
+        for line in f:
+            name = line.strip()
+            if name:
+                NAMES_LEXICON.add(name.lower())
+    print(f"[INFO] Loaded {len(NAMES_LEXICON)} names from names.txt")
+except Exception as e:
+    print(f"[WARN] Could not load names.txt: {e}")
+
+def find_name_from_lexicon(text: str, names_set: set) -> str:
+    if not text or not names_set:
+        print("[WARN] No text or names set")
+        return ""
+    head = (text or "")[:4000]
+    # tokenization allowing accents, hyphens, apostrophes
+    tokens = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]*\.?", head)
+    # Prefer earliest hit in header region, then try to expand to a likely full name
+    particles = {"de", "da", "del", "della", "van", "von", "bin", "binti", "al", "el", "la", "le", "di", "dos", "das", "do", "du", "mac", "mc", "o'", "d'"}
+    locations = {"india", "bengaluru", "bangalore", "mumbai", "delhi", "new delhi", "chennai", "hyderabad", "pune", "kolkata", "ahmedabad", "gurgaon", "noida", "bhopal", "indore", "jaipur", "kochi", "cochin"}
+    non_name_stops = {"an", "it", "resume", "cv", "curriculum", "vitae"}
+    for i, tok in enumerate(tokens):
+        word = tok.rstrip('.')
+        wl = word.lower()
+        if wl in non_name_stops:
+            continue
+        if wl in names_set and len(wl) > 1:
+            parts = [word]
+            j = i + 1
+            # include up to 3 following tokens if they look like name parts
+            while j < len(tokens) and len(parts) < 4:
+                w = tokens[j].rstrip('.')
+                wl = w.lower().strip(" :;.-")
+                if wl in locations:
+                    break
+                if wl in particles or (w and (w[0].isupper() or w.isupper())):
+                    parts.append(w)
+                    j += 1
+                    continue
+                break
+            # require at least two tokens to reduce false positives
+            if len([p for p in parts if p]) >= 2:
+                return " ".join(p.title() for p in parts if p)
+    return ""
+
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 MODEL_NAME = "mistral-small"
 
@@ -131,43 +179,91 @@ OFFLINE_QBANK = {
 # In-memory store to avoid large client-side cookies
 QUIZ_STORE = {}
 
-# Simple company/role recommendations per skill
+# Simple company/role recommendations per skill (4 per skill)
 RECOMMENDATIONS = {
     "Python": [
         {"company": "Google", "role": "Software Engineer (Python)", "url": "https://www.google.com/about/careers/applications/jobs/results/?query=python"},
+        {"company": "Microsoft", "role": "Python Developer", "url": "https://jobs.careers.microsoft.com/global/en/search?q=python"},
+        {"company": "Netflix", "role": "Backend Engineer (Python)", "url": "https://jobs.netflix.com/search?query=python"},
         {"company": "LinkedIn Jobs", "role": "Python Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=Python%20Developer"}
     ],
     "Java": [
         {"company": "Amazon", "role": "Backend Engineer (Java)", "url": "https://www.amazon.jobs/en/search?base_query=java"},
+        {"company": "Oracle", "role": "Java Developer", "url": "https://careers.oracle.com/jobs#/?search=java"},
+        {"company": "TCS", "role": "Java Engineer", "url": "https://www.tcs.com/careers"},
         {"company": "LinkedIn Jobs", "role": "Java Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=Java%20Developer"}
     ],
     "React": [
         {"company": "Meta", "role": "Frontend Engineer (React)", "url": "https://www.metacareers.com/jobs/?q=frontend"},
+        {"company": "Airbnb", "role": "React Engineer", "url": "https://careers.airbnb.com/positions/"},
+        {"company": "Shopify", "role": "Frontend Developer (React)", "url": "https://www.shopify.com/careers/search?keywords=react"},
         {"company": "LinkedIn Jobs", "role": "React Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=React%20Developer"}
     ],
     "SQL": [
         {"company": "Snowflake", "role": "Data Engineer (SQL)", "url": "https://careers.snowflake.com/us/en"},
+        {"company": "Databricks", "role": "Data Engineer (SQL)", "url": "https://www.databricks.com/company/careers"},
+        {"company": "Oracle", "role": "SQL Developer", "url": "https://careers.oracle.com/jobs#/?search=sql"},
         {"company": "LinkedIn Jobs", "role": "SQL Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=SQL%20Developer"}
     ],
     "Machine Learning": [
         {"company": "NVIDIA", "role": "ML Engineer", "url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"},
+        {"company": "Google", "role": "ML Engineer", "url": "https://www.google.com/about/careers/applications/jobs/results/?query=machine%20learning"},
+        {"company": "Uber", "role": "Applied ML", "url": "https://www.uber.com/us/en/careers/"},
         {"company": "LinkedIn Jobs", "role": "Machine Learning Engineer", "url": "https://www.linkedin.com/jobs/search/?keywords=Machine%20Learning%20Engineer"}
     ],
     "Deep Learning": [
         {"company": "OpenAI", "role": "Deep Learning Engineer", "url": "https://openai.com/careers"},
+        {"company": "NVIDIA", "role": "Deep Learning Engineer", "url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"},
+        {"company": "Apple", "role": "Deep Learning Researcher", "url": "https://jobs.apple.com/en-us/search?search=deep%20learning"},
         {"company": "LinkedIn Jobs", "role": "Deep Learning", "url": "https://www.linkedin.com/jobs/search/?keywords=Deep%20Learning"}
     ],
     "Django": [
         {"company": "Canonical", "role": "Backend Engineer (Django)", "url": "https://canonical.com/careers"},
+        {"company": "Mozilla", "role": "Web Engineer (Django)", "url": "https://www.mozilla.org/en-US/careers/listings/"},
+        {"company": "Red Hat", "role": "Software Engineer (Django)", "url": "https://www.redhat.com/en/jobs"},
         {"company": "LinkedIn Jobs", "role": "Django Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=Django%20Developer"}
     ],
     "Flask": [
         {"company": "JetBrains", "role": "Backend Engineer (Flask)", "url": "https://www.jetbrains.com/careers/jobs/"},
+        {"company": "Reddit", "role": "Backend Engineer (Flask/Python)", "url": "https://www.redditinc.com/careers"},
+        {"company": "Atlassian", "role": "Software Engineer (Flask/Python)", "url": "https://www.atlassian.com/company/careers/all-jobs"},
         {"company": "LinkedIn Jobs", "role": "Flask Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=Flask%20Developer"}
     ],
     "JavaScript": [
         {"company": "Microsoft", "role": "Front-end Engineer (JS)", "url": "https://jobs.careers.microsoft.com/global/en/search?q=javascript"},
+        {"company": "Google", "role": "Software Engineer (JS)", "url": "https://www.google.com/about/careers/applications/jobs/results/?query=javascript"},
+        {"company": "Stripe", "role": "Frontend Engineer", "url": "https://stripe.com/jobs/search"},
         {"company": "LinkedIn Jobs", "role": "JavaScript Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=JavaScript%20Developer"}
+    ],
+    "Data Science": [
+        {"company": "Airbnb", "role": "Data Scientist", "url": "https://careers.airbnb.com/positions/"},
+        {"company": "Meta", "role": "Data Scientist", "url": "https://www.metacareers.com/jobs/?q=data%20scientist"},
+        {"company": "Uber", "role": "Data Scientist", "url": "https://www.uber.com/us/en/careers/"},
+        {"company": "LinkedIn Jobs", "role": "Data Scientist", "url": "https://www.linkedin.com/jobs/search/?keywords=Data%20Scientist"}
+    ],
+    "NLP": [
+        {"company": "Google", "role": "NLP Engineer", "url": "https://www.google.com/about/careers/applications/jobs/results/?query=nlp"},
+        {"company": "Hugging Face", "role": "ML/NLP Engineer", "url": "https://apply.workable.com/huggingface/"},
+        {"company": "AWS", "role": "Applied Scientist (NLP)", "url": "https://www.amazon.jobs/en/search?base_query=nlp"},
+        {"company": "LinkedIn Jobs", "role": "NLP Engineer", "url": "https://www.linkedin.com/jobs/search/?keywords=NLP%20Engineer"}
+    ],
+    "TensorFlow": [
+        {"company": "Google", "role": "TensorFlow Engineer", "url": "https://www.google.com/about/careers/applications/jobs/results/?query=tensorflow"},
+        {"company": "DeepMind", "role": "Research Engineer (TF)", "url": "https://www.deepmind.com/careers"},
+        {"company": "Samsung", "role": "ML Engineer (TensorFlow)", "url": "https://www.samsung.com/us/careers/"},
+        {"company": "LinkedIn Jobs", "role": "TensorFlow", "url": "https://www.linkedin.com/jobs/search/?keywords=TensorFlow"}
+    ],
+    "PyTorch": [
+        {"company": "Meta", "role": "Research Engineer (PyTorch)", "url": "https://www.metacareers.com/jobs/?q=pytorch"},
+        {"company": "NVIDIA", "role": "DL Engineer (PyTorch)", "url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"},
+        {"company": "Microsoft", "role": "AI Engineer (PyTorch)", "url": "https://jobs.careers.microsoft.com/global/en/search?q=pytorch"},
+        {"company": "LinkedIn Jobs", "role": "PyTorch", "url": "https://www.linkedin.com/jobs/search/?keywords=PyTorch"}
+    ],
+    "C++": [
+        {"company": "NVIDIA", "role": "Systems/Graphics Engineer (C++)", "url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"},
+        {"company": "Bloomberg", "role": "Software Engineer (C++)", "url": "https://careers.bloomberg.com/job/search/?keyword=c%2B%2B"},
+        {"company": "Qualcomm", "role": "Embedded Engineer (C/C++)", "url": "https://careers.qualcomm.com/"},
+        {"company": "LinkedIn Jobs", "role": "C++ Developer", "url": "https://www.linkedin.com/jobs/search/?keywords=C%2B%2B%20Developer"}
     ],
 }
 
@@ -216,10 +312,57 @@ def extract_skills_from_text(text):
     print(f"[DEBUG] Found skills: {skills}")
     return skills
 
+def augment_skills_to_five(skills):
+    """Ensure we always have 5 skills by augmenting from a priority list without duplicates."""
+    if len(skills) >= 5:
+        return skills[:5]
+    preferred = [
+        "Python", "Java", "Machine Learning", "Deep Learning", "Flask", "SQL", "JavaScript", "React", "Data Science", "AI",
+    ]
+    pool = [s for s in preferred + skill_keywords if s not in skills]
+    for s in pool:
+        if len(skills) >= 5:
+            break
+        skills.append(s)
+    return skills[:5]
+
 # -------------------------------
 # Generate quiz (with deep logging)
 # -------------------------------
-def generate_quiz_questions(skills, per_skill=5):
+def _synthesize_mcq_for_skill(skill: str, n: int):
+    """Generate n simple placeholder MCQs for a given skill as a last-resort fallback."""
+    items = []
+    templates = [
+        (f"Basic concept in {skill}?", ["Definition", "Random fact", "Unrelated term", "All of the above"], "A", f"In {skill}, understanding definitions is foundational."),
+        (f"Common use of {skill}?", ["Data processing", "Cooking", "Singing", "Driving"], "A", f"{skill} is commonly applied to data/engineering tasks."),
+        (f"Choose the correct statement about {skill}.", [f"{skill} has practical industry use", "{skill} is a sport", "{skill} is a fruit", "None"], "A", f"{skill} is a technology/skill area."),
+        (f"A typical tool/library for {skill}?", ["Relevant tool", "Hammer", "Paint", "Spoon"], "A", f"Select a tool commonly associated with {skill}."),
+        (f"Good practice in {skill} is to?", ["Follow best practices", "Ignore errors", "Avoid docs", "Never test"], "A", f"Best practices improve {skill} outcomes."),
+    ]
+    for i in range(n):
+        t = templates[i % len(templates)]
+        items.append({
+            "question": t[0],
+            "options": t[1],
+            "correct_answer": t[2],
+            "explanation": t[3],
+            "skill": skill,
+        })
+    return items
+
+def _shuffle_options_from_bank(item):
+    """Given an offline bank item with opts and ans letter, return shuffled options and new correct letter."""
+    opts = item["opts"][:]
+    letters = ['A', 'B', 'C', 'D']
+    original_map = dict(zip(letters, opts))
+    correct_text = original_map.get(item["ans"], opts[0])
+    random.shuffle(opts)
+    # find new letter where correct_text ended up
+    idx = opts.index(correct_text)
+    new_correct = letters[idx]
+    return opts, new_correct
+
+def generate_quiz_questions(skills, per_skill=5, nonce: str = ""):
     print("[DEBUG] Generating quiz with skills:", skills)
     if not skills:
         print("[WARN] No skills found — cannot generate quiz.")
@@ -228,110 +371,99 @@ def generate_quiz_questions(skills, per_skill=5):
     all_questions = []
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json",
     }
     for skill in skills:
-        # Prefer offline bank for speed if available
-        bank = OFFLINE_QBANK.get(skill)
-        if bank:
-            for item in bank[:per_skill]:
-                all_questions.append({
-                    "question": item["q"],
-                    "options": item["opts"],
-                    "correct_answer": item["ans"],
-                    "explanation": item["exp"],
-                    "skill": skill,
-                })
-            # Move to next skill (skip API for this one)
-            continue
-        prompt = (
-            f"Generate {per_skill} multiple-choice questions strictly about this skill: {skill}.\n"
-            "Each question must include:\n"
-            "- Question text\n"
-            "- 4 options (A, B, C, D)\n"
-            "- The correct answer letter\n"
-            "- A one-line explanation.\n"
-            "Format it like this:\n"
-            "Question: <text>\nA) ...\nB) ...\nC) ...\nD) ...\nCorrect Answer: <A/B/C/D>\nExplanation: <reason>\n"
-        )
-        try:
-            print(f"[DEBUG] Sending request to Mistral API for skill: {skill} ...")
-            payload = {
-                "model": MODEL_NAME,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7,
-                "max_tokens": 900
-            }
-            print("[DEBUG] Payload summary:", json.dumps(payload, indent=2)[:300])
-            response = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=8)
-            print("[DEBUG] Mistral status code:", response.status_code)
-            with open("mistral_debug.json", "a", encoding="utf-8") as f:
-                f.write("\n\n==== RESPONSE FOR SKILL: " + skill + " ====\n")
-                f.write(response.text)
-            if response.status_code != 200:
-                print("[ERROR] Mistral returned non-200 status. Falling back to offline bank for:", skill)
-                # Offline fallback
-                bank = OFFLINE_QBANK.get(skill, [])
-                for item in bank[:per_skill]:
-                    all_questions.append({
-                        "question": item["q"],
-                        "options": item["opts"],
-                        "correct_answer": item["ans"],
-                        "explanation": item["exp"],
-                        "skill": skill,
-                    })
-                continue
-            data = response.json()
-            if "choices" not in data or not data["choices"]:
-                print("[ERROR] Empty response from Mistral. Falling back to offline bank for:", skill)
-                bank = OFFLINE_QBANK.get(skill, [])
-                for item in bank[:per_skill]:
-                    all_questions.append({
-                        "question": item["q"],
-                        "options": item["opts"],
-                        "correct_answer": item["ans"],
-                        "explanation": item["exp"],
-                        "skill": skill,
-                    })
-                continue
-            content = data["choices"][0]["message"]["content"]
-            print("[DEBUG] Received content (first 400 chars):\n", content[:400])
-            blocks = content.split("Question:")[1:]
-            for block in blocks:
-                lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
-                if not lines:
-                    continue
-                question = lines[0]
-                options, correct, explanation = [], None, ""
-                for line in lines[1:]:
-                    if line.startswith(("A)", "B)", "C)", "D)")):
-                        options.append(line[3:].strip())
-                    elif line.startswith("Correct Answer:"):
-                        correct = line.split(":")[1].strip()[0]
-                    elif line.startswith("Explanation:"):
-                        explanation = line.split(":", 1)[1].strip()
-                if question and len(options) == 4 and correct:
-                    all_questions.append({
-                        "question": question,
-                        "options": options,
-                        "correct_answer": correct,
-                        "explanation": explanation,
-                        "skill": skill
-                    })
-        except Exception as e:
-            print("[ERROR] Exception while generating quiz for skill:", skill)
-            traceback.print_exc()
-            # Fallback on exception
+        skill_questions = []
+        attempts = 0
+        # If no API key, use offline randomized bank directly
+        if not MISTRAL_API_KEY:
             bank = OFFLINE_QBANK.get(skill, [])
-            for item in bank[:per_skill]:
-                all_questions.append({
+            sample = bank[:]
+            random.shuffle(sample)
+            for item in sample[:per_skill]:
+                shuffled_opts, new_ans = _shuffle_options_from_bank(item)
+                skill_questions.append({
                     "question": item["q"],
-                    "options": item["opts"],
-                    "correct_answer": item["ans"],
+                    "options": shuffled_opts,
+                    "correct_answer": new_ans,
                     "explanation": item["exp"],
                     "skill": skill,
                 })
+            if len(skill_questions) < per_skill:
+                missing = per_skill - len(skill_questions)
+                skill_questions.extend(_synthesize_mcq_for_skill(skill, missing))
+            all_questions.extend(skill_questions)
             continue
+        while len(skill_questions) < per_skill and attempts < 3:
+            needed = per_skill - len(skill_questions)
+            prompt = (
+                f"Generate {needed} multiple-choice questions strictly about this skill: {skill}.\n"
+                "Each question must include:\n"
+                "- Question text\n"
+                "- 4 options (A, B, C, D)\n"
+                "- The correct answer letter\n"
+                "- A one-line explanation.\n"
+                "Format it like this:\n"
+                "Question: <text>\nA) ...\nB) ...\nC) ...\nD) ...\nCorrect Answer: <A/B/C/D>\nExplanation: <reason>\n"
+                "Vary difficulty (easy/medium/hard) and do not repeat prior phrasings.\n"
+                f"Nonce: {nonce}-{skill}-{attempts}. Ensure the questions differ in wording from any prior outputs.\n"
+            )
+            try:
+                print(f"[DEBUG] Sending request to Mistral API for skill: {skill} (attempt {attempts+1})...")
+                payload = {
+                    "model": MODEL_NAME,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 1.0,
+                    "top_p": 0.95,
+                    "max_tokens": 900
+                }
+                print("[DEBUG] Payload summary:", json.dumps(payload, indent=2)[:300])
+                response = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=20)
+                print("[DEBUG] Mistral status code:", response.status_code)
+                with open("mistral_debug.json", "a", encoding="utf-8") as f:
+                    f.write("\n\n==== RESPONSE FOR SKILL: " + skill + f" (attempt {attempts+1}) ====\n")
+                    f.write(response.text)
+                if response.status_code != 200:
+                    raise RuntimeError(f"Mistral non-200 status: {response.status_code}")
+                data = response.json()
+                if "choices" not in data or not data["choices"]:
+                    raise RuntimeError("Mistral returned empty choices")
+                content = data["choices"][0]["message"]["content"]
+                print("[DEBUG] Received content (first 400 chars):\n", content[:400])
+                blocks = content.split("Question:")[1:]
+                for block in blocks:
+                    lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
+                    if not lines:
+                        continue
+                    question = lines[0]
+                    options, correct, explanation = [], None, ""
+                    for line in lines[1:]:
+                        if line.startswith(("A)", "B)", "C)", "D)")):
+                            options.append(line[3:].strip())
+                        elif line.startswith("Correct Answer:"):
+                            correct = line.split(":")[1].strip()[0]
+                        elif line.startswith("Explanation:"):
+                            explanation = line.split(":", 1)[1].strip()
+                    if question and len(options) == 4 and correct:
+                        skill_questions.append({
+                            "question": question,
+                            "options": options,
+                            "correct_answer": correct,
+                            "explanation": explanation,
+                            "skill": skill
+                        })
+            except Exception as e:
+                print("[ERROR] Mistral generation failed for skill:", skill, "error:", e)
+            finally:
+                attempts += 1
+                if len(skill_questions) < per_skill:
+                    # simple exponential backoff
+                    time.sleep(min(1.0 * attempts, 3.0))
+        if len(skill_questions) < per_skill:
+            raise RuntimeError(f"Insufficient questions from Mistral for {skill}: {len(skill_questions)}/{per_skill}")
+        all_questions.extend(skill_questions[:per_skill])
     print(f"[DEBUG] Successfully compiled {len(all_questions)} questions across skills.")
     return all_questions
 
@@ -349,18 +481,36 @@ def index():
         uploaded_file.save(path)
 
         text = extract_text_from_resume(path)
-        skills = extract_skills_from_text(text)[:5]
-        # Try multiple strategies for name extraction (prefer NER first)
+        skills = extract_skills_from_text(text)
+        skills = augment_skills_to_five(skills)
+        # Try multiple strategies for name extraction: prefer lexicon, then NER, then heuristics
         name = None
-        # spaCy PERSON NER on the first 3000 chars; prefer multi-token names
+        # 0) Fast lexicon match over the header region
         try:
-            doc = nlp(text[:3000])
-            persons = [ent.text.strip() for ent in doc.ents if ent.label_ == "PERSON" and 3 <= len(ent.text.strip()) <= 60]
-            persons = sorted(persons, key=lambda s: len(s.split()), reverse=True)
-            if persons:
-                name = persons[0]
+            lex_name = find_name_from_lexicon(text, NAMES_LEXICON)
+            print(f'lex_name is {lex_name}')
+            if lex_name:
+                name = lex_name
         except Exception:
             pass
+        # 1) spaCy PERSON NER; prioritize earliest PERSON near the top, break ties by longer names
+        try:
+            if len(text) > nlp.max_length:
+                nlp.max_length = len(text) + 1000
+            window = text[:6000]
+            doc = nlp(window)
+            person_ents = [
+                (ent.start_char, ent.text.strip())
+                for ent in doc.ents
+                if ent.label_ == "PERSON" and 2 <= len(ent.text.strip()) <= 80
+            ]
+            # Prefer earliest occurrence (header area), then multi-token names
+            person_ents.sort(key=lambda t: (t[0], -len(t[1].split())))
+            if (not name) and person_ents:
+                name = person_ents[0][1]
+        except Exception:
+            pass
+        # 2) Heuristic extractor
         if not name or name == "Unknown":
             name = extract_name(text)
         if not name or name == "Unknown":
@@ -420,11 +570,12 @@ def index():
         session["resume_name"] = name
         session["resume_skills"] = skills  # small list OK in cookie
         session["resume_path"] = path
+        session["resume_filename"] = uploaded_file.filename
         # Issue a small server-side ID for large data
         sid = session.get("sid") or uuid.uuid4().hex
         session["sid"] = sid
         QUIZ_STORE[sid] = {"questions": [], "results": []}
-        return render_template("upload.html", name=name, skills=skills)
+        return render_template("upload.html", name=name, skills=skills, filename=uploaded_file.filename)
     return render_template("index.html")
 
 @app.route("/quiz", methods=["GET", "POST"])
@@ -434,12 +585,29 @@ def quiz():
         return redirect(url_for("index"))
     store = QUIZ_STORE[sid]
     questions = store.get("questions", [])
-    if request.method == "GET" and not questions:
+    if request.method == "GET":
         skills = session.get("resume_skills", [])
         if not skills:
             return redirect(url_for("index"))
-        questions = generate_quiz_questions(skills, per_skill=5)
+        # If no API key, generate via offline randomized bank (handled inside generate_quiz_questions)
+        # Always regenerate fresh questions on Start Quiz
+        fresh_nonce = f"{uuid.uuid4().hex}-{time.time_ns()}"
+        try:
+            questions = generate_quiz_questions(skills, per_skill=5, nonce=fresh_nonce)
+        except Exception as e:
+            return render_template(
+                "error.html",
+                heading="Quiz Generation Failed",
+                message="We couldn't generate questions right now.",
+                details=str(e),
+                primary_url=url_for("quiz"),
+                primary_label="Try Again",
+                secondary_url=url_for("index"),
+                secondary_label="Back to Upload"
+            )
         store["questions"] = questions
+        store["results"] = []
+        store["quiz_id"] = fresh_nonce
     if request.method == "POST":
         score = 0
         results = []
@@ -459,7 +627,7 @@ def quiz():
             })
         store["results"] = results
         return render_template("result.html", score=score, total=len(questions), results=results)
-    return render_template("quiz.html", questions=questions)
+    return render_template("quiz.html", questions=questions, quiz_id=store.get("quiz_id"))
 
 @app.route("/resources", methods=["GET"])
 def resources():
@@ -507,26 +675,34 @@ def recommendations():
     skills = session.get("resume_skills", [])
     if not skills:
         return redirect(url_for("index"))
-    recs = []
+    # Group openings by company with roles list
+    groups = {}
     seen = set()
     for skill in skills:
-        entries = RECOMMENDATIONS.get(skill, [])
-        for e in entries:
-            key = (e["company"], e["role"], e["url"])
+        for e in RECOMMENDATIONS.get(skill, [])[:6]:
+            key = (e["company"], e["role"], e["url"])  # dedupe exact role at company
             if key in seen:
                 continue
             seen.add(key)
-            recs.append({"skill": skill, **e})
-    # Add generic job boards search for coverage
-    if not recs:
-        for skill in skills:
-            recs.append({
+            comp = e["company"]
+            if comp not in groups:
+                groups[comp] = {"company": comp, "roles": []}
+            groups[comp]["roles"].append({
+                "role": e["role"],
                 "skill": skill,
-                "company": "LinkedIn Jobs",
+                "url": e["url"],
+            })
+    # Fallback: if nothing matched, add generic job board entries grouped under 'LinkedIn Jobs'
+    if not groups:
+        groups["LinkedIn Jobs"] = {"company": "LinkedIn Jobs", "roles": []}
+        for skill in skills:
+            groups["LinkedIn Jobs"]["roles"].append({
                 "role": f"{skill} roles",
+                "skill": skill,
                 "url": f"https://www.linkedin.com/jobs/search/?keywords={skill.replace(' ', '%20')}"
             })
-    return render_template("recommendations.html", recs=recs)
+    companies = sorted(groups.values(), key=lambda x: x["company"].lower())
+    return render_template("recommendations.html", companies=companies)
 
 if __name__ == "__main__":
     print("[INFO] Starting Flask app...")

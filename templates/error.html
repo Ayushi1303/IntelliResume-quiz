@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}IntelliResume — Error{% endblock %}
+{% block content %}
+<div class="card" style="max-width:720px;margin:0 auto;">
+  <div class="card-header">
+    <h2>{{ heading or 'Something went wrong' }}</h2>
+  </div>
+  <div class="card-body">
+    <p class="meta" style="margin:0 0 8px 0;">{{ message or 'An unexpected error occurred.' }}</p>
+    {% if details %}
+      <pre style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px;overflow:auto;">{{ details }}</pre>
+    {% endif %}
+    <div class="actions" style="justify-content:flex-start;">
+      {% if primary_url %}
+        <a class="btn" href="{{ primary_url }}">{{ primary_label or 'Continue' }}</a>
+      {% endif %}
+      {% if secondary_url %}
+        <a class="btn secondary" href="{{ secondary_url }}">{{ secondary_label or 'Back' }}</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
