@@ -2,7 +2,7 @@ import os
 import requests
 import json
 
-MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "I14m9nTrNhTAiGPaHvLdaqRHrNKDkWDE")
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 DEFAULT_MODEL = "mistral-small"
 

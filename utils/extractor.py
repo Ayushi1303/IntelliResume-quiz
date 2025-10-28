@@ -26,7 +26,6 @@ def extract_skills(text):
 
 def extract_name(text):
     # Normalize
-    print(f'text is {text}')
     text = re.sub(r"[\t\r]+", " ", text)
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
@@ -60,7 +59,7 @@ def extract_name(text):
     email_re = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
     phone_re = re.compile(r"(?:\+?\d[\d\s().-]{6,}\d)")
     first_contact_idx = None
-    for i, l in enumerate(lines[:60]):
+    for i, l in enumerate(lines[:80]):
         if email_re.search(l) or phone_re.search(l):
             first_contact_idx = i
             break
@@ -89,7 +88,8 @@ def extract_name(text):
             if (3 <= len(w) <= 30) and w[0].isalpha() and (w[0].isupper() or w.isupper()) and (wl not in header_phrases) and (wl not in job_words):
                 score = 3 + max(0, 5 - idx//3) + bonus
                 return (score, [w])
-        if 2 <= len(words_clean) <= 4:
+        # Accept 2-5 tokens to allow middle names/suffixes
+        if 2 <= len(words_clean) <= 5:
             caps_words = 0
             for w in words_clean:
                 wl = w.lower()
@@ -98,7 +98,9 @@ def extract_name(text):
                 elif w and (w[0].isupper() or w.isupper()):
                     caps_words += 1
             all_caps = sum(1 for w in words_clean if w.isupper()) == len(words_clean)
-            score = caps_words + max(0, 5 - idx//3) + bonus
+            # Slightly favor very top lines
+            score = caps_words + max(0, 6 - idx//4) + bonus
+            # Accept if enough words look like names or whole line is caps (common in headers)
             if all_caps or caps_words >= 2:
                 return (score, words_clean)
         return None
@@ -111,7 +113,7 @@ def extract_name(text):
             res = score_line(i, lines[i], bonus=3)
             if res:
                 candidates.append(res)
-    for idx, line in enumerate(lines[:25]):
+    for idx, line in enumerate(lines[:35]):
         if len(line) > 120:
             continue
         res = score_line(idx, line)
@@ -134,7 +136,7 @@ def extract_name(text):
 
     # Fallback generic two-capitalized-words pattern anywhere near the top
     generic_pat = re.compile(r"\b([A-Z][a-zA-Z\-']+\s+[A-Z][a-zA-Z\-']+(?:\s+[A-Z][a-zA-Z\-']+)?)\b")
-    for line in lines[:40]:
+    for line in lines[:80]:
         if any(k in line.lower() for k in contact_markers):
             continue
         g = generic_pat.search(line)

@@ -66,7 +66,7 @@ def find_name_from_lexicon(text: str, names_set: set) -> str:
                 return " ".join(p.title() for p in parts if p)
     return ""
 
-MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "I14m9nTrNhTAiGPaHvLdaqRHrNKDkWDE")
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 MODEL_NAME = "mistral-small"
 
