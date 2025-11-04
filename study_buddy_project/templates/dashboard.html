@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Study Buddy Finder{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">My Study Profile</h5>
+            </div>
+            <div class="card-body">
+                {% if preferences %}
+                    <h6 class="card-subtitle mb-2 text-muted">{{ preferences.course_name or 'No course selected' }}</h6>
+                    <p class="card-text">
+                        <strong>Study Style:</strong> {{ preferences.study_style or 'Not specified' }}<br>
+                        <strong>Availability:</strong> {{ preferences.availability or 'Not specified' }}<br>
+                        <strong>Preferred Times:</strong> {{ preferences.preferred_study_times or 'Not specified' }}
+                    </p>
+                {% else %}
+                    <p class="card-text">You haven't set up your study preferences yet.</p>
+                {% endif %}
+                <a href="{{ url_for('update_preferences') }}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-gear"></i> Update Preferences
+                </a>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">Buddy Requests</h5>
+            </div>
+            <div class="card-body">
+                {% if pending_requests %}
+                    <div class="list-group">
+                        {% for req in pending_requests %}
+                            <div class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">{{ req.sender.username }}</h6>
+                                    <small>{{ req.created_at.strftime('%b %d, %Y') }}</small>
+                                </div>
+                                {% if req.message %}
+                                    <p class="mb-1">{{ req.message }}</p>
+                                {% endif %}
+                                <div class="btn-group btn-group-sm mt-2">
+                                    <form method="POST" action="{{ url_for('respond_request', request_id=req.id, action='accept') }}" class="d-inline">
+                                        <button type="submit" class="btn btn-success btn-sm">Accept</button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('respond_request', request_id=req.id, action='reject') }}" class="d-inline">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">Reject</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="card-text">No pending buddy requests.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">My Study Buddies</h5>
+                    <a href="{{ url_for('find_buddies') }}" class="btn btn-light btn-sm">
+                        <i class="bi bi-plus-lg"></i> Find Buddies
+                    </a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if buddies %}
+                    <div class="row">
+                        {% for buddy in buddies %}
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center">
+                                            <div class="flex-shrink-0">
+                                                <div class="avatar bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                                    {{ buddy.username[0].upper() }}
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1 ms-3">
+                                                <h6 class="mb-0">{{ buddy.username }}</h6>
+                                                <small class="text-muted">{{ buddy.email }}</small>
+                                            </div>
+                                            <div class="flex-shrink-0">
+                                                <a href="#" class="btn btn-sm btn-outline-primary">
+                                                    <i class="bi bi-chat"></i> Message
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-people display-4 text-muted mb-3"></i>
+                        <h5>No study buddies yet</h5>
+                        <p class="text-muted">Find and connect with other students to start studying together!</p>
+                        <a href="{{ url_for('find_buddies') }}" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Find Study Buddies
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Upcoming Study Sessions</h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center py-4">
+                    <i class="bi bi-calendar-event display-4 text-muted mb-3"></i>
+                    <h5>No upcoming sessions</h5>
+                    <p class="text-muted">Schedule a study session with your buddies to see it here.</p>
+                    <button class="btn btn-outline-primary" disabled>
+                        <i class="bi bi-plus-circle"></i> Schedule Session
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add any dashboard-specific JavaScript here
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
+{% endblock %}

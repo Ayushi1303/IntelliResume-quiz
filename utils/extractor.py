@@ -29,19 +29,19 @@ def extract_name(text):
     text = re.sub(r"[\t\r]+", " ", text)
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    # Quick regex for explicit labels like: Name: FIRST M. LAST
-    label_pat = re.compile(r"(?i)(?:^|\n)\s*name\s*[:\-]?\s*([A-Za-z][A-Za-z\-']+(?:\s+[A-Za-z]\.)?(?:\s+[A-Za-z][A-Za-z\-']+){1,2})\b")
+    # Quick regex for explicit labels like: Name: FIRST M. LAST (match line-only)
+    label_pat = re.compile(r"(?im)^\s*name\s*[:\-]?\s*([A-Za-z][A-Za-z\-']+(?:\s+[A-Za-z]\.)?(?:\s+[A-Za-z][A-Za-z\-']+){1,2})\s*$")
     m = label_pat.search("\n".join(lines[:40]))
     if m:
         return m.group(1).strip().title()
 
     # Heuristic scan of the top of document
-    blacklist = {"resume", "curriculum vitae", "cv", "profile", "summary", "objective"}
+    blacklist = {"resume", "curriculum vitae", "cv", "profile", "summary", "objective", "portfolio"}
     # Common resume section headers to skip entirely
     header_phrases = {
         "education", "education details", "education qualification", "education qualifications",
         "work experience", "professional experience", "experience", "projects", "personal projects",
-        "skills", "technical skills", "certifications", "achievements", "awards", "contact",
+        "skills", "technical skills", "certifications", "achievements", "awards", "contact", "portfolio",
         "interests", "hobbies", "publications", "languages", "responsibilities", "key responsibilities",
         "strengths", "references"
     }
@@ -69,6 +69,9 @@ def extract_name(text):
             return None
         if low in header_phrases:
             return None
+        # skip contact lines entirely (e.g., 'Email: x@y')
+        if any(k in low for k in contact_markers):
+            return None
         # remove contacts and split segments
         working = re.sub(r"\S+@\S+", " ", line)
         working = re.sub(r"https?://\S+", " ", working)
@@ -82,6 +85,10 @@ def extract_name(text):
             if header_token_count / max(1, len(words)) >= 0.5:
                 return None
         words_clean = [w.rstrip('.') for w in words]
+        # reject obvious job-title lines (short lines dominated by job words)
+        job_count = sum(1 for w in words_clean if w.lower() in job_words)
+        if job_count >= 1 and len(words_clean) <= 3:
+            return None
         if len(words_clean) == 1:
             w = words_clean[0]
             wl = w.lower().strip(" :;.-")
@@ -137,7 +144,12 @@ def extract_name(text):
     # Fallback generic two-capitalized-words pattern anywhere near the top
     generic_pat = re.compile(r"\b([A-Z][a-zA-Z\-']+\s+[A-Z][a-zA-Z\-']+(?:\s+[A-Z][a-zA-Z\-']+)?)\b")
     for line in lines[:80]:
-        if any(k in line.lower() for k in contact_markers):
+        low = line.lower().strip(" :;.-")
+        if any(k in low for k in contact_markers):
+            continue
+        if low in blacklist or low in header_phrases:
+            continue
+        if any(w in low.split() for w in job_words):
             continue
         g = generic_pat.search(line)
         if g:
@@ -147,5 +159,22 @@ def extract_name(text):
             except Exception:
                 pass
             return name
+
+    # Final fallback: accept a strong single-token name near the top
+    for idx, line in enumerate(lines[:35]):
+        # Skip obvious contact lines
+        if any(k in line.lower() for k in contact_markers):
+            continue
+        words = [w.rstrip('.').strip(" :;.-") for w in tokenize(line)]
+        words = [w for w in words if w and w[0].isalpha()]
+        if len(words) == 1:
+            w = words[0]
+            wl = w.lower()
+            if (3 <= len(w) <= 30) and (w[0].isupper() or w.isupper()) and (wl not in header_phrases) and (wl not in job_words) and (wl not in blacklist):
+                try:
+                    print(f"[NAME] single-token selected: {w.title()}")
+                except Exception:
+                    pass
+                return w.title()
 
     return "Unknown"

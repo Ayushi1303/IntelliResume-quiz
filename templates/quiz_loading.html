@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preparing Your Quiz…</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  <style>
+    .center { display:flex; align-items:center; justify-content:center; min-height:70vh; flex-direction:column; gap:16px; }
+    .spinner { width:48px; height:48px; border:4px solid #e5e7eb; border-top-color:#3b82f6; border-radius:50%; animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .muted { color:#6b7280; }
+  </style>
+</head>
+<body data-status-url="{{ url_for('quiz_status') }}" data-quiz-url="{{ url_for('quiz') }}">
+  <div class="container">
+    <h1>Generating your quiz…</h1>
+    <div class="center">
+      <div class="spinner" aria-label="Loading"></div>
+      <div class="muted" id="status-text">This usually takes a few seconds.</div>
+      <button id="retry" style="display:none" onclick="window.location.reload()">Try Again</button>
+      <a href="{{ url_for('index') }}" class="muted">Back</a>
+    </div>
+  </div>
+  <script>
+    const statusText = document.getElementById("status-text");
+    const retryBtn = document.getElementById("retry");
+    const statusUrl = document.body.dataset.statusUrl;
+    const quizUrl = document.body.dataset.quizUrl;
+    async function poll() {
+      try {
+        const res = await fetch(statusUrl, { cache: "no-store" });
+        const data = await res.json();
+        if (data.ready) {
+          window.location.href = quizUrl;
+          return;
+        }
+        if (data.status === "error") {
+          statusText.textContent = "There was an error generating the quiz. Please try again.";
+          retryBtn.style.display = "inline-block";
+          return;
+        }
+        // keep polling
+        setTimeout(poll, 1000);
+      } catch (e) {
+        statusText.textContent = "Network issue. Retrying…";
+        setTimeout(poll, 1500);
+      }
+    }
+    poll();
+  </script>
+</body>
+</html>

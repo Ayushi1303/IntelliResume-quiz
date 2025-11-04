@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import os, requests, fitz, spacy, json, traceback, uuid, re, time, random
+from threading import Thread
 # Optional OCR deps
 try:
     from pdf2image import convert_from_path
@@ -578,6 +579,31 @@ def index():
         return render_template("upload.html", name=name, skills=skills, filename=uploaded_file.filename)
     return render_template("index.html")
 
+def _start_quiz_generation_if_needed(sid: str, skills: list):
+    store = QUIZ_STORE.setdefault(sid, {})
+    status = store.get("status")
+    if status == "running":
+        return
+    # initialize status
+    store["status"] = "running"
+    store["error"] = ""
+    store["questions"] = []
+    store["results"] = []
+    fresh_nonce = f"{uuid.uuid4().hex}-{time.time_ns()}"
+    store["quiz_id"] = fresh_nonce
+
+    def worker():
+        try:
+            qs = generate_quiz_questions(skills, per_skill=5, nonce=fresh_nonce)
+            store["questions"] = qs
+            store["status"] = "ready"
+        except Exception as e:
+            store["error"] = str(e)
+            store["status"] = "error"
+
+    Thread(target=worker, daemon=True).start()
+
+
 @app.route("/quiz", methods=["GET", "POST"])
 def quiz():
     sid = session.get("sid")
@@ -589,25 +615,12 @@ def quiz():
         skills = session.get("resume_skills", [])
         if not skills:
             return redirect(url_for("index"))
-        # If no API key, generate via offline randomized bank (handled inside generate_quiz_questions)
-        # Always regenerate fresh questions on Start Quiz
-        fresh_nonce = f"{uuid.uuid4().hex}-{time.time_ns()}"
-        try:
-            questions = generate_quiz_questions(skills, per_skill=5, nonce=fresh_nonce)
-        except Exception as e:
-            return render_template(
-                "error.html",
-                heading="Quiz Generation Failed",
-                message="We couldn't generate questions right now.",
-                details=str(e),
-                primary_url=url_for("quiz"),
-                primary_label="Try Again",
-                secondary_url=url_for("index"),
-                secondary_label="Back to Upload"
-            )
-        store["questions"] = questions
-        store["results"] = []
-        store["quiz_id"] = fresh_nonce
+        # Kick off background generation if needed and show loading UI
+        _start_quiz_generation_if_needed(sid, skills)
+        if store.get("status") == "ready" and store.get("questions"):
+            questions = store["questions"]
+        else:
+            return render_template("quiz_loading.html")
     if request.method == "POST":
         score = 0
         results = []
@@ -628,6 +641,19 @@ def quiz():
         store["results"] = results
         return render_template("result.html", score=score, total=len(questions), results=results)
     return render_template("quiz.html", questions=questions, quiz_id=store.get("quiz_id"))
+
+@app.route("/quiz_status", methods=["GET"]) 
+def quiz_status():
+    sid = session.get("sid")
+    if not sid or sid not in QUIZ_STORE:
+        return jsonify({"ready": False, "status": "missing", "error": ""})
+    store = QUIZ_STORE[sid]
+    status = store.get("status", "idle")
+    if status == "ready" and store.get("questions"):
+        return jsonify({"ready": True, "status": "ready", "error": ""})
+    if status == "error":
+        return jsonify({"ready": False, "status": "error", "error": store.get("error", "")})
+    return jsonify({"ready": False, "status": status, "error": ""})
 
 @app.route("/resources", methods=["GET"])
 def resources():
