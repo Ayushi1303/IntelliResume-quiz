@@ -492,158 +492,90 @@ def _generate_questions_for_skill(skill, per_skill, nonce, attempts=3):
     return skill_questions[:per_skill]
 
 def generate_quiz_questions(skills, per_skill=5, nonce: str = ""):
-    print("[DEBUG] Generating quiz with skills:", skills)
+    """
+    Generate quiz questions for the given skills with optimizations for speed and reliability.
+    
+    Args:
+        skills: List of skills to generate questions for
+        per_skill: Number of questions to generate per skill
+        nonce: Unique identifier for this generation request
+        
+    Returns:
+        List of question dictionaries with their answers and explanations
+    """
     if not skills:
-        print("[WARN] No skills found — cannot generate quiz.")
+        print("[WARN] No skills provided for quiz generation")
         return []
 
     all_questions = []
-    
-    # First try to get as many questions as possible from offline bank
-    offline_questions = []
     remaining_skills = []
+    skill_question_map = {skill: [] for skill in skills}
     
+    # First try to get questions from offline bank
     for skill in skills:
         bank = OFFLINE_QBANK.get(skill, [])
-        if bank and len(bank) >= per_skill:
-            sample = bank[:]
-            random.shuffle(sample)
-            for item in sample[:per_skill]:
+        if bank:
+            # Take up to per_skill questions from the bank
+            sample = random.sample(bank, min(per_skill, len(bank)))
+            for item in sample:
                 shuffled_opts, new_ans = _shuffle_options_from_bank(item)
-                offline_questions.append({
+                skill_question_map[skill].append({
                     "question": item["q"],
                     "options": shuffled_opts,
                     "correct_answer": new_ans,
                     "explanation": item["exp"],
                     "skill": skill,
+                    "source": "offline_bank"
                 })
-        else:
-            remaining_skills.append(skill)
+        
+        # If we still need more questions for this skill, add to remaining_skills
+        remaining_needed = per_skill - len(skill_question_map[skill])
+        if remaining_needed > 0:
+            remaining_skills.append((skill, remaining_needed))
     
-    # If we got all questions from offline bank, return them immediately
+    # If we have all questions from offline bank, return them
     if not remaining_skills:
-        print(f"[DEBUG] Using {len(offline_questions)} questions from offline bank")
-        return offline_questions[:len(skills) * per_skill]
+        print(f"[INFO] Using {sum(len(q) for q in skill_question_map.values())} questions from offline bank")
+        return [q for skill_qs in skill_question_map.values() for q in skill_qs]
+
+    # Generate remaining questions in parallel with rate limiting
+    print(f"[INFO] Generating {sum(n for _, n in remaining_skills)} questions for {len(remaining_skills)} skills")
     
-    # Otherwise, generate remaining questions in parallel
-    print(f"[DEBUG] Generating questions for {len(remaining_skills)} skills using API")
-    
-    # Use ThreadPoolExecutor to generate questions in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(remaining_skills), 3)) as executor:
+    # Use ThreadPoolExecutor with limited workers to avoid rate limiting
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         # Submit all skill processing tasks
         future_to_skill = {
-            executor.submit(_generate_questions_for_skill, skill, per_skill, nonce): skill 
-            for skill in remaining_skills
+            executor.submit(
+                _generate_questions_for_skill, 
+                skill, 
+                count, 
+                f"{nonce}-{i}",
+                attempts=2  # Reduced from 3 to fail faster
+            ): (skill, count) 
+            for i, (skill, count) in enumerate(remaining_skills)
         }
         
         # Process completed tasks
         for future in concurrent.futures.as_completed(future_to_skill):
-            skill = future_to_skill[future]
+            skill, count = future_to_skill[future]
             try:
-                skill_questions = future.result()
-                all_questions.extend(skill_questions)
-                print(f"[DEBUG] Generated {len(skill_questions)} questions for skill: {skill}")
-            except Exception as exc:
-                print(f'[ERROR] Skill {skill} generated an exception: {exc}')
-                # Generate fallback questions if there's an error
-                fallback_questions = _synthesize_mcq_for_skill(skill, per_skill)
-                all_questions.extend(fallback_questions)
-    
-    # Combine offline and generated questions
-    all_questions = offline_questions + all_questions
-    print(f"[DEBUG] Successfully compiled {len(all_questions)} questions across {len(skills)} skills.")
-    return all_questions
-    for skill in skills:
-        skill_questions = []
-        attempts = 0
-        # If no API key, use offline randomized bank directly
-        if not MISTRAL_API_KEY:
-            bank = OFFLINE_QBANK.get(skill, [])
-            sample = bank[:]
-            random.shuffle(sample)
-            for item in sample[:per_skill]:
-                shuffled_opts, new_ans = _shuffle_options_from_bank(item)
-                skill_questions.append({
-                    "question": item["q"],
-                    "options": shuffled_opts,
-                    "correct_answer": new_ans,
-                    "explanation": item["exp"],
-                    "skill": skill,
-                })
-            if len(skill_questions) < per_skill:
-                missing = per_skill - len(skill_questions)
-                skill_questions.extend(_synthesize_mcq_for_skill(skill, missing))
-            all_questions.extend(skill_questions)
-            continue
-        while len(skill_questions) < per_skill and attempts < 3:
-            needed = per_skill - len(skill_questions)
-            prompt = (
-                f"Generate {needed} multiple-choice questions strictly about this skill: {skill}.\n"
-                "Each question must include:\n"
-                "- Question text\n"
-                "- 4 options (A, B, C, D)\n"
-                "- The correct answer letter\n"
-                "- A one-line explanation.\n"
-                "Format it like this:\n"
-                "Question: <text>\nA) ...\nB) ...\nC) ...\nD) ...\nCorrect Answer: <A/B/C/D>\nExplanation: <reason>\n"
-                "Vary difficulty (easy/medium/hard) and do not repeat prior phrasings.\n"
-                f"Nonce: {nonce}-{skill}-{attempts}. Ensure the questions differ in wording from any prior outputs.\n"
-            )
-            try:
-                print(f"[DEBUG] Sending request to Mistral API for skill: {skill} (attempt {attempts+1})...")
-                payload = {
-                    "model": MODEL_NAME,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 1.0,
-                    "top_p": 0.95,
-                    "max_tokens": 900
-                }
-                print("[DEBUG] Payload summary:", json.dumps(payload, indent=2)[:300])
-                response = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=20)
-                print("[DEBUG] Mistral status code:", response.status_code)
-                with open("mistral_debug.json", "a", encoding="utf-8") as f:
-                    f.write("\n\n==== RESPONSE FOR SKILL: " + skill + f" (attempt {attempts+1}) ====\n")
-                    f.write(response.text)
-                if response.status_code != 200:
-                    raise RuntimeError(f"Mistral non-200 status: {response.status_code}")
-                data = response.json()
-                if "choices" not in data or not data["choices"]:
-                    raise RuntimeError("Mistral returned empty choices")
-                content = data["choices"][0]["message"]["content"]
-                print("[DEBUG] Received content (first 400 chars):\n", content[:400])
-                blocks = content.split("Question:")[1:]
-                for block in blocks:
-                    lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
-                    if not lines:
-                        continue
-                    question = lines[0]
-                    options, correct, explanation = [], None, ""
-                    for line in lines[1:]:
-                        if line.startswith(("A)", "B)", "C)", "D)")):
-                            options.append(line[3:].strip())
-                        elif line.startswith("Correct Answer:"):
-                            correct = line.split(":")[1].strip()[0]
-                        elif line.startswith("Explanation:"):
-                            explanation = line.split(":", 1)[1].strip()
-                    if question and len(options) == 4 and correct:
-                        skill_questions.append({
-                            "question": question,
-                            "options": options,
-                            "correct_answer": correct,
-                            "explanation": explanation,
-                            "skill": skill
-                        })
+                generated = future.result()
+                skill_question_map[skill].extend(generated)
+                print(f"[INFO] Generated {len(generated)} questions for {skill}")
             except Exception as e:
-                print("[ERROR] Mistral generation failed for skill:", skill, "error:", e)
-            finally:
-                attempts += 1
-                if len(skill_questions) < per_skill:
-                    # simple exponential backoff
-                    time.sleep(min(1.0 * attempts, 3.0))
-        if len(skill_questions) < per_skill:
-            raise RuntimeError(f"Insufficient questions from Mistral for {skill}: {len(skill_questions)}/{per_skill}")
-        all_questions.extend(skill_questions[:per_skill])
-    print(f"[DEBUG] Successfully compiled {len(all_questions)} questions across skills.")
+                print(f"[ERROR] Failed to generate questions for {skill}: {str(e)[:200]}")
+                # Fallback to offline questions if generation fails
+                fallback = _synthesize_mcq_for_skill(skill, count)
+                skill_question_map[skill].extend(fallback)
+    
+    # Combine all questions, ensuring we don't exceed per_skill limit
+    for skill in skills:
+        all_questions.extend(skill_question_map[skill][:per_skill])
+    
+    # Shuffle questions to mix different skills
+    random.shuffle(all_questions)
+    
+    print(f"[INFO] Generated {len(all_questions)} total questions")
     return all_questions
 
 # -------------------------------
