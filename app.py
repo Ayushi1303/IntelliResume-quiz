@@ -363,6 +363,134 @@ def _shuffle_options_from_bank(item):
     new_correct = letters[idx]
     return opts, new_correct
 
+def _generate_questions_for_skill(skill, per_skill, nonce, attempts=3):
+    """Helper function to generate questions for a single skill with retries and caching."""
+    # Try to get from cache first
+    cache_key = f"{skill}:{per_skill}:{nonce}"
+    if hasattr(_generate_questions_for_skill, '_cache') and cache_key in _generate_questions_for_skill._cache:
+        return _generate_questions_for_skill._cache[cache_key][:per_skill]
+    
+    skill_questions = []
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    
+    # If no API key, use offline randomized bank directly
+    if not MISTRAL_API_KEY:
+        bank = OFFLINE_QBANK.get(skill, [])
+        sample = bank[:]
+        random.shuffle(sample)
+        for item in sample[:per_skill]:
+            shuffled_opts, new_ans = _shuffle_options_from_bank(item)
+            skill_questions.append({
+                "question": item["q"],
+                "options": shuffled_opts,
+                "correct_answer": new_ans,
+                "explanation": item["exp"],
+                "skill": skill,
+            })
+        if len(skill_questions) < per_skill:
+            missing = per_skill - len(skill_questions)
+            skill_questions.extend(_synthesize_mcq_for_skill(skill, missing))
+        
+        # Cache the result
+        if not hasattr(_generate_questions_for_skill, '_cache'):
+            _generate_questions_for_skill._cache = {}
+        _generate_questions_for_skill._cache[cache_key] = skill_questions
+        return skill_questions
+    
+    for attempt in range(attempts):
+        try:
+            needed = per_skill - len(skill_questions)
+            if needed <= 0:
+                break
+                
+            prompt = (
+                f"Generate {needed} multiple-choice questions strictly about this skill: {skill}.\n"
+                "Each question must include:\n"
+                "- Question text\n"
+                "- 4 options (A, B, C, D)\n"
+                "- The correct answer letter\n"
+                "- A one-line explanation.\n"
+                "Format it like this:\n"
+                "Question: <text>\nA) ...\nB) ...\nC) ...\nD) ...\nCorrect Answer: <A/B/C/D>\nExplanation: <reason>\n"
+                "Vary difficulty (easy/medium/hard) and do not repeat prior phrasings.\n"
+                f"Nonce: {nonce}-{skill}-{attempt}. Ensure the questions differ in wording from any prior outputs.\n"
+            )
+            
+            print(f"[DEBUG] Sending request to Mistral API for skill: {skill} (attempt {attempt+1})...")
+            payload = {
+                "model": MODEL_NAME,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 1.0,
+                "top_p": 0.95,
+                "max_tokens": 900
+            }
+            
+            response = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=25)
+            print(f"[DEBUG] Mistral status code for {skill}: {response.status_code}")
+            
+            if response.status_code != 200:
+                raise RuntimeError(f"Mistral non-200 status: {response.status_code}")
+                
+            data = response.json()
+            if "choices" not in data or not data["choices"]:
+                raise RuntimeError("Mistral returned empty choices")
+                
+            content = data["choices"][0]["message"]["content"]
+            blocks = content.split("Question:")[1:]
+            
+            for block in blocks:
+                lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
+                if not lines:
+                    continue
+                    
+                question = lines[0]
+                options, correct, explanation = [], None, ""
+                
+                for line in lines[1:]:
+                    if line.startswith(("A)", "B)", "C)", "D)")):
+                        options.append(line[3:].strip())
+                    elif line.startswith("Correct Answer:"):
+                        correct = line.split(":")[1].strip()[0]
+                    elif line.startswith("Explanation:"):
+                        explanation = line.split(":", 1)[1].strip()
+                
+                if question and len(options) == 4 and correct:
+                    skill_questions.append({
+                        "question": question,
+                        "options": options,
+                        "correct_answer": correct,
+                        "explanation": explanation,
+                        "skill": skill
+                    })
+                    
+                    # If we've got enough questions, return early
+                    if len(skill_questions) >= per_skill:
+                        # Cache the result before returning
+                        if not hasattr(_generate_questions_for_skill, '_cache'):
+                            _generate_questions_for_skill._cache = {}
+                        _generate_questions_for_skill._cache[cache_key] = skill_questions
+                        return skill_questions[:per_skill]
+                        
+        except Exception as e:
+            print(f"[ERROR] Attempt {attempt + 1} failed for skill {skill}: {str(e)}")
+            if attempt == attempts - 1:  # Last attempt
+                print(f"[WARN] All attempts failed for skill {skill}, using fallback questions")
+                # Generate some basic questions as fallback
+                fallback_needed = per_skill - len(skill_questions)
+                if fallback_needed > 0:
+                    skill_questions.extend(_synthesize_mcq_for_skill(skill, fallback_needed))
+            time.sleep(min(1.0 * (attempt + 1), 3.0))  # Exponential backoff
+    
+    # Cache the result before returning
+    if not hasattr(_generate_questions_for_skill, '_cache'):
+        _generate_questions_for_skill._cache = {}
+    _generate_questions_for_skill._cache[cache_key] = skill_questions
+    return skill_questions[:per_skill]
+
 def generate_quiz_questions(skills, per_skill=5, nonce: str = ""):
     print("[DEBUG] Generating quiz with skills:", skills)
     if not skills:
@@ -370,11 +498,61 @@ def generate_quiz_questions(skills, per_skill=5, nonce: str = ""):
         return []
 
     all_questions = []
-    headers = {
-        "Authorization": f"Bearer {MISTRAL_API_KEY}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
+    
+    # First try to get as many questions as possible from offline bank
+    offline_questions = []
+    remaining_skills = []
+    
+    for skill in skills:
+        bank = OFFLINE_QBANK.get(skill, [])
+        if bank and len(bank) >= per_skill:
+            sample = bank[:]
+            random.shuffle(sample)
+            for item in sample[:per_skill]:
+                shuffled_opts, new_ans = _shuffle_options_from_bank(item)
+                offline_questions.append({
+                    "question": item["q"],
+                    "options": shuffled_opts,
+                    "correct_answer": new_ans,
+                    "explanation": item["exp"],
+                    "skill": skill,
+                })
+        else:
+            remaining_skills.append(skill)
+    
+    # If we got all questions from offline bank, return them immediately
+    if not remaining_skills:
+        print(f"[DEBUG] Using {len(offline_questions)} questions from offline bank")
+        return offline_questions[:len(skills) * per_skill]
+    
+    # Otherwise, generate remaining questions in parallel
+    print(f"[DEBUG] Generating questions for {len(remaining_skills)} skills using API")
+    
+    # Use ThreadPoolExecutor to generate questions in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(remaining_skills), 3)) as executor:
+        # Submit all skill processing tasks
+        future_to_skill = {
+            executor.submit(_generate_questions_for_skill, skill, per_skill, nonce): skill 
+            for skill in remaining_skills
+        }
+        
+        # Process completed tasks
+        for future in concurrent.futures.as_completed(future_to_skill):
+            skill = future_to_skill[future]
+            try:
+                skill_questions = future.result()
+                all_questions.extend(skill_questions)
+                print(f"[DEBUG] Generated {len(skill_questions)} questions for skill: {skill}")
+            except Exception as exc:
+                print(f'[ERROR] Skill {skill} generated an exception: {exc}')
+                # Generate fallback questions if there's an error
+                fallback_questions = _synthesize_mcq_for_skill(skill, per_skill)
+                all_questions.extend(fallback_questions)
+    
+    # Combine offline and generated questions
+    all_questions = offline_questions + all_questions
+    print(f"[DEBUG] Successfully compiled {len(all_questions)} questions across {len(skills)} skills.")
+    return all_questions
     for skill in skills:
         skill_questions = []
         attempts = 0
@@ -582,10 +760,21 @@ def index():
 def _start_quiz_generation_if_needed(sid: str, skills: list):
     store = QUIZ_STORE.setdefault(sid, {})
     status = store.get("status")
-    if status == "running":
+    
+    # If we already have questions, no need to regenerate
+    if status == "ready" and store.get("questions"):
         return
-    # initialize status
+        
+    # If already running, check if it's been too long (5 minutes)
+    if status == "running":
+        start_time = store.get("start_time", 0)
+        if time.time() - start_time < 300:  # 5 minutes timeout
+            return
+        print("[WARN] Quiz generation timed out, restarting...")
+    
+    # Initialize or reset status
     store["status"] = "running"
+    store["start_time"] = time.time()
     store["error"] = ""
     store["questions"] = []
     store["results"] = []
@@ -594,13 +783,48 @@ def _start_quiz_generation_if_needed(sid: str, skills: list):
 
     def worker():
         try:
+            # First try to use offline questions if available
+            offline_questions = []
+            for skill in skills:
+                bank = OFFLINE_QBANK.get(skill, [])
+                if bank:
+                    sample = bank[:min(5, len(bank))]
+                    random.shuffle(sample)
+                    for item in sample:
+                        shuffled_opts, new_ans = _shuffle_options_from_bank(item)
+                        offline_questions.append({
+                            "question": item["q"],
+                            "options": shuffled_opts,
+                            "correct_answer": new_ans,
+                            "explanation": item["exp"],
+                            "skill": skill,
+                        })
+            
+            # If we have enough offline questions, use them
+            if len(offline_questions) >= len(skills) * 3:  # At least 3 questions per skill
+                store["questions"] = offline_questions
+                store["status"] = "ready"
+                print("[INFO] Using offline questions for instant quiz")
+                return
+                
+            # Otherwise generate new questions
             qs = generate_quiz_questions(skills, per_skill=5, nonce=fresh_nonce)
             store["questions"] = qs
             store["status"] = "ready"
+            
         except Exception as e:
+            print(f"[ERROR] Error in quiz generation: {str(e)}")
             store["error"] = str(e)
             store["status"] = "error"
+            
+            # Fallback to synthesized questions if generation fails
+            fallback_questions = []
+            for skill in skills:
+                fallback_questions.extend(_synthesize_mcq_for_skill(skill, 3))  # 3 questions per skill
+            store["questions"] = fallback_questions
+            store["status"] = "ready"
 
+    # Start the worker thread
     Thread(target=worker, daemon=True).start()
 
 
